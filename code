@@ -1,0 +1,103 @@
+#include <Wire.h>
+#include <LiquidCrystal_PCF8574.h>
+#include <ThreeWire.h>
+#include <RtcDS1302.h>
+LiquidCrystal_PCF8574 lcd(0x27);
+
+// DS1302
+ThreeWire myWire(11, 12, 10);
+RtcDS1302<ThreeWire> Rtc(myWire);
+// 光敏模組數位腳 (DO數位)
+#define LDR_DO 8
+// 繼電器腳位
+#define RELAY2_PIN 2
+#define RELAY3_PIN 3
+#define RELAY4_PIN 4
+void setup() {
+  // Serial.begin(9600); // 
+  delay(500);
+
+  pinMode(LDR_DO, INPUT);
+
+  pinMode(RELAY2_PIN, OUTPUT);
+  pinMode(RELAY3_PIN, OUTPUT);
+  pinMode(RELAY4_PIN, OUTPUT);
+
+  digitalWrite(RELAY2_PIN, HIGH); // 繼電器預設關閉
+  digitalWrite(RELAY3_PIN, HIGH);
+  digitalWrite(RELAY4_PIN, HIGH);
+
+  Wire.begin();
+  lcd.begin(16, 2);
+  lcd.setBacklight(255);
+
+  Rtc.Begin();
+  RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
+
+  if (!Rtc.IsDateTimeValid()) {
+    // Serial.println(F("設定為編譯時間")); 
+    Rtc.SetDateTime(compiled);
+  }
+
+  if (Rtc.GetIsWriteProtected()) {
+    // Serial.println(F("解除保護")); 
+    Rtc.SetIsWriteProtected(false);
+  }
+
+  if (!Rtc.GetIsRunning()) {
+    Rtc.SetIsRunning(true);
+  }
+
+  RtcDateTime now = Rtc.GetDateTime();
+  if (now < compiled) {
+    // Serial.println(F("更新為編譯時間")); 
+    Rtc.SetDateTime(compiled);
+  }
+
+  // Serial.println(F("系統初始化完成")); 
+}
+
+void loop() {
+  RtcDateTime now = Rtc.GetDateTime();
+  int hour = now.Hour();
+  int minute = now.Minute();
+  int second = now.Second();
+  bool lightDetected = digitalRead(LDR_DO);
+
+  // 6:00~17:59開啟
+  if (hour >= 6 && hour < 18) {
+    digitalWrite(RELAY2_PIN, LOW);
+  } else {
+    digitalWrite(RELAY2_PIN, HIGH);
+  }
+
+  // 光敏
+  if (lightDetected) {
+    digitalWrite(RELAY3_PIN, LOW);
+  } else {
+    digitalWrite(RELAY3_PIN, HIGH);
+  }
+
+  // 晚上18:00~隔天5:59開啟，6:00~17:59關閉
+  if (hour >= 18 || hour < 6) {
+    digitalWrite(RELAY4_PIN, LOW);
+  } else {
+    digitalWrite(RELAY4_PIN, HIGH);
+  }
+  char line1[17];
+  sprintf(line1, "Time:%02d:%02d:%02d", hour, minute, second);
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(line1);
+
+  // 繼電器狀態
+  char line2[17];
+  sprintf(line2, "R2:%d R3:%d R4:%d",
+          digitalRead(RELAY2_PIN) == LOW ? 1 : 0,
+          digitalRead(RELAY3_PIN) == LOW ? 1 : 0,
+          digitalRead(RELAY4_PIN) == LOW ? 1 : 0);
+  lcd.setCursor(0, 1);
+  lcd.print(line2);
+
+  delay(1000);
+}
